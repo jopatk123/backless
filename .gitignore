@@ -1,0 +1,25 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+
+# 系统文件
+.DS_Store
+
+# 设计稿素材（仅本地保留，不入库）
+pic/
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 日志
+*.log
+npm-debug.log*
+
+# 编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json

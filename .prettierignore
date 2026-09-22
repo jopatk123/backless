@@ -1,0 +1,5 @@
+dist/
+node_modules/
+pic/
+package-lock.json
+*.min.*
