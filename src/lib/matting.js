@@ -109,6 +109,12 @@ function featherEdges(px, w, h, radius) {
   }
 }
 
+/** 容差 0–100 映射为 RGB 欧氏距离平方上限（容差 × 1.4）。修边泛洪与抠图共用。 */
+export function colorMatchLimit(tolerance) {
+  const maxD = tolerance * 1.4
+  return maxD * maxD
+}
+
 /**
  * 边缘泛洪 + 容差去背景（不修改入参 src）
  *
@@ -124,8 +130,7 @@ function featherEdges(px, w, h, radius) {
 export function processMatting(src, w, h, { tolerance = 30, feather = 0, refColor = [0, 255, 0] }) {
   const n = w * h
   const out = new Uint8ClampedArray(src) // 拷贝，保留原始数据
-  const maxD = tolerance * 1.4
-  const maxD2 = maxD * maxD
+  const maxD2 = colorMatchLimit(tolerance)
   const [cr, cg, cb] = refColor
 
   const removed = new Uint8Array(n)

@@ -1,14 +1,17 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import TouchupCanvas from './TouchupCanvas.vue'
 
 const props = defineProps({
   image: { type: Object, required: true },
+  tolerance: { type: Number, default: 30 },
 })
-const emit = defineEmits(['close', 'pick', 'reset-color', 'download'])
+const emit = defineEmits(['close', 'pick', 'reset-color', 'download', 'retouch'])
 
 const mode = ref('compare') // compare | result | original
 const pos = ref(50) // 对比分隔线位置（百分比）
 const picking = ref(false)
+const editing = ref(false)
 const viewportEl = ref(null)
 const modeBeforePick = ref('compare')
 
@@ -38,7 +41,14 @@ function updatePos(e) {
   pos.value = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
 }
 
+function startEdit() {
+  if (!props.image.touchRev || !props.image.touch?.auto) return
+  if (picking.value) cancelPick()
+  editing.value = true
+}
+
 function onPointerDown(e) {
+  if (editing.value) return
   if (e.button != null && e.button !== 0) return
   if (picking.value) {
     doPick(e)
@@ -90,11 +100,12 @@ function cancelPick() {
 
 function onKeydown(e) {
   if (e.key === 'Escape') {
-    if (picking.value) cancelPick()
+    if (editing.value) editing.value = false
+    else if (picking.value) cancelPick()
     else emit('close')
     return
   }
-  if (!split.value || picking.value) return
+  if (editing.value || !split.value || picking.value) return
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault()
     const step = e.shiftKey ? 10 : 2
@@ -135,7 +146,21 @@ onBeforeUnmount(() => {
         </button>
       </header>
 
+      <TouchupCanvas
+        v-if="editing"
+        :width="image.width"
+        :height="image.height"
+        :touch="image.touch"
+        :revision="image.touchRev"
+        :tolerance="tolerance"
+        :status="image.status"
+        :error="image.error"
+        @done="editing = false"
+        @change="emit('retouch')"
+        @download="emit('download')"
+      />
       <div
+        v-else
         ref="viewportEl"
         class="viewport"
         :class="{ picking, comparing: split }"
@@ -189,9 +214,9 @@ onBeforeUnmount(() => {
         <span v-if="image.status === 'error'" class="m-err">{{ image.error || '处理失败' }}</span>
       </div>
 
-      <p v-if="picking" class="pick-hint">点击图片中要去除的颜色（基于原图取样）</p>
+      <p v-if="picking && !editing" class="pick-hint">点击图片中要去除的颜色（基于原图取样）</p>
 
-      <footer class="m-foot">
+      <footer v-if="!editing" class="m-foot">
         <div class="modes" role="tablist">
           <button :class="{ on: mode === 'original' }" @click="mode = 'original'">原图</button>
           <button :class="{ on: mode === 'compare' }" @click="mode = 'compare'">对比</button>
@@ -211,6 +236,28 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="foot-right">
+          <button
+            class="btn ghost"
+            :disabled="!image.touchRev"
+            title="擦掉残留，或把误删的主体涂回来"
+            @click="startEdit"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+            >
+              <path d="M4 16.5 14.5 6l3.5 3.5L7.5 20H4v-3.5z" />
+              <path d="M12.5 8 16 11.5" />
+              <path d="M4 20h16" />
+            </svg>
+            修边
+          </button>
           <button
             class="btn ghost"
             :class="{ active: picking }"

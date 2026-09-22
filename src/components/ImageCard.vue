@@ -35,6 +35,7 @@ const sizeText = computed(() => {
         :style="refStyle"
         :title="refTitle"
       ></span>
+      <span v-if="image.edited && image.status === 'done'" class="badge edited">已修边</span>
       <transition name="fade">
         <span v-if="image.status !== 'done'" class="badge" :class="image.status">
           {{
@@ -147,6 +148,7 @@ const sizeText = computed(() => {
   color: #fff;
   backdrop-filter: blur(4px);
 }
+.badge.edited,
 .badge.processing {
   background: rgba(99, 102, 241, 0.88);
 }

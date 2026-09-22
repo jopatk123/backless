@@ -1,5 +1,5 @@
 /**
- * 抠图 Worker：持有每张图的原始像素（主线程不留副本），
+ * 抠图 Worker：持有每张图的原始像素。主线程另留一份，供修边时把主体涂回。
  * 按请求 id 回传结果，避免并发时串包。
  */
 import { detectEdgeColor, processMatting } from './matting.js'

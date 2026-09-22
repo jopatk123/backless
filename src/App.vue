@@ -1,10 +1,11 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, markRaw, onMounted, onBeforeUnmount } from 'vue'
 import JSZip from 'jszip'
 import Dropzone from './components/Dropzone.vue'
 import ImageCard from './components/ImageCard.vue'
 import CompareModal from './components/CompareModal.vue'
 import { createMattingService } from './lib/mattingService.js'
+import { createTouchup, compositeTouchup, hasEdits } from './lib/touchup.js'
 
 const service = createMattingService()
 const images = reactive([])
@@ -21,6 +22,7 @@ let uid = 0
 let reprocessTimer = null
 // 每张图只采纳最后一次处理结果，避免旧请求把新结果盖掉
 const processGen = new WeakMap()
+const publishGen = new WeakMap()
 // 复用一个解码用 canvas
 const decodeCanvas = document.createElement('canvas')
 const decodeCtx = decodeCanvas.getContext('2d', { willReadFrequently: true })
@@ -57,6 +59,9 @@ async function addFiles(fileList) {
       resultBlob: null,
       pickedColor: null,
       autoColor: null,
+      touch: null,
+      touchRev: 0,
+      edited: false,
     })
     images.push(rec)
     // 解码失败与后台线程通信失败分开提示，避免误报「无法解码」
@@ -75,6 +80,7 @@ async function addFiles(fileList) {
     }
     rec.width = imageData.width
     rec.height = imageData.height
+    rec.touch = markRaw(createTouchup(new Uint8ClampedArray(imageData.data), rec.width, rec.height))
     try {
       rec.autoColor = await service.register(id, imageData)
       rec.status = 'processing'
@@ -105,20 +111,10 @@ async function runProcess(rec) {
     })
     if (stale()) return
     if (!buffer || buffer.byteLength !== w * h * 4) throw new Error('结果数据异常')
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('无法创建画布')
-    ctx.putImageData(new ImageData(new Uint8ClampedArray(buffer), w, h), 0, 0)
-    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'))
-    if (stale()) return
-    if (!blob) throw new Error('导出 PNG 失败')
-    if (rec.resultUrl) URL.revokeObjectURL(rec.resultUrl)
-    rec.resultBlob = blob
-    rec.resultUrl = URL.createObjectURL(blob)
-    rec.status = 'done'
-    rec.error = ''
+    if (!rec.touch || rec.touch.w !== w || rec.touch.h !== h) throw new Error('结果数据异常')
+    rec.touch.auto = new Uint8ClampedArray(buffer)
+    rec.touchRev++
+    await publishComposite(rec)
   } catch (e) {
     if (stale()) return
     rec.status = 'error'
@@ -155,6 +151,53 @@ async function pickColor(rec, x, y) {
     await runProcess(rec)
   } catch (e) {
     if (!images.includes(rec) || (processGen.get(rec) || 0) !== seen) return
+    rec.status = 'error'
+    rec.error = errorText(e)
+  }
+}
+
+function compositePixels(rec) {
+  const { w, h } = rec.touch
+  const out = new Uint8ClampedArray(w * h * 4)
+  compositeTouchup(rec.touch, out, null)
+  return out
+}
+
+function canvasToPng(pixels, w, h) {
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return Promise.resolve(null)
+  ctx.putImageData(new ImageData(pixels, w, h), 0, 0)
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+}
+
+/** 用当前自动结果叠上手动覆盖层，写出预览和下载用的 PNG。 */
+async function publishComposite(rec) {
+  const touch = rec.touch
+  if (!touch?.auto) return
+  const token = (publishGen.get(rec) || 0) + 1
+  publishGen.set(rec, token)
+  const stale = () => publishGen.get(rec) !== token || !images.includes(rec)
+  rec.edited = hasEdits(touch)
+  const out = compositePixels(rec)
+  const blob = await canvasToPng(out, touch.w, touch.h)
+  if (stale()) return
+  if (!blob) throw new Error('导出 PNG 失败')
+  if (rec.resultUrl) URL.revokeObjectURL(rec.resultUrl)
+  rec.resultBlob = blob
+  rec.resultUrl = URL.createObjectURL(blob)
+  rec.status = 'done'
+  rec.error = ''
+}
+
+async function onRetouch(rec) {
+  if (!rec) return
+  try {
+    await publishComposite(rec)
+  } catch (e) {
+    if (!images.includes(rec)) return
     rec.status = 'error'
     rec.error = errorText(e)
   }
@@ -412,10 +455,12 @@ onBeforeUnmount(() => {
     <CompareModal
       v-if="modalImage"
       :image="modalImage"
+      :tolerance="settings.tolerance"
       @close="modalId = null"
       @pick="(x, y) => pickColor(modalImage, x, y)"
       @reset-color="resetColor(modalImage)"
       @download="downloadOne(modalImage)"
+      @retouch="onRetouch(modalImage)"
     />
   </div>
 </template>

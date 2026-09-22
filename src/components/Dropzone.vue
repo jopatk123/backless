@@ -48,6 +48,7 @@ function onFileChange(e) {
       <li>容差可调</li>
       <li>边缘羽化</li>
       <li>手动吸色</li>
+      <li>手动修边</li>
       <li>对比预览</li>
       <li>ZIP 打包下载</li>
     </ul>
