@@ -140,20 +140,25 @@ function onSettingsChange() {
 
 /* ---------------- 单图参数覆盖 ---------------- */
 
-let overrideTimer = null
+// 覆盖值立刻写入，重处理按图防抖。弹窗会因修边或关闭而拆掉参数控件，
+// 不能等防抖结束后再写，也不能让后一张图的操作清掉前一张的定时器。
+const overrideTimers = new WeakMap()
 
-/** 设置或清除单图参数覆盖；与全局设置同样先防抖再重处理该图。 */
 function setOverride(rec, value) {
-  if (!rec) return
-  clearTimeout(overrideTimer)
-  overrideTimer = setTimeout(() => {
-    if (!images.includes(rec)) return
-    rec.override = value ? { tolerance: value.tolerance, feather: value.feather } : null
-    if (rec.autoColor) {
+  if (!rec || !images.includes(rec)) return
+  rec.override = value ? { tolerance: value.tolerance, feather: value.feather } : null
+  const prev = overrideTimers.get(rec)
+  if (prev) clearTimeout(prev)
+  if (!rec.autoColor) return
+  overrideTimers.set(
+    rec,
+    setTimeout(() => {
+      overrideTimers.delete(rec)
+      if (!images.includes(rec)) return
       rec.status = 'processing'
       runProcess(rec)
-    }
-  }, 260)
+    }, 260),
+  )
 }
 
 /* ---------------- 吸色 ---------------- */
@@ -274,6 +279,8 @@ async function downloadZip() {
 /* ---------------- 移除 ---------------- */
 
 function removeImage(rec) {
+  const pending = overrideTimers.get(rec)
+  if (pending) clearTimeout(pending)
   service.release(rec.id)
   URL.revokeObjectURL(rec.originalUrl)
   if (rec.resultUrl) URL.revokeObjectURL(rec.resultUrl)

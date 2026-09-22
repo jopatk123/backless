@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = defineProps({
   override: { type: Object, default: null },
@@ -8,13 +8,25 @@ const props = defineProps({
 const emit = defineEmits(['override'])
 
 /* 单图自定义参数：开启后本图容差/羽化独立，不再跟随全局设置。
-   本地状态在挂载时取当前生效值；此后由用户操作驱动，不回读 props
-   （父级写入 override 有防抖延迟，本地状态总是领先或等于它）。 */
+   未开启时滑块只展示当前全局值，避免数字和「跟随全局」提示不一致。 */
 const custom = ref(!!props.override)
 const tolVal = ref(props.override?.tolerance ?? props.globalSettings.tolerance)
 const fthVal = ref(props.override?.feather ?? props.globalSettings.feather)
 
+watch(
+  () => [props.globalSettings.tolerance, props.globalSettings.feather],
+  ([tolerance, feather]) => {
+    if (custom.value) return
+    tolVal.value = tolerance
+    fthVal.value = feather
+  },
+)
+
 function onToggleCustom() {
+  if (!custom.value) {
+    tolVal.value = props.globalSettings.tolerance
+    fthVal.value = props.globalSettings.feather
+  }
   emit('override', custom.value ? { tolerance: tolVal.value, feather: fthVal.value } : null)
 }
 
