@@ -61,9 +61,9 @@ const emit = defineEmits([
           :value="radius"
           type="range"
           min="1"
-          max="64"
+          max="120"
           step="1"
-          :style="{ '--fill': ((radius - 1) / 63) * 100 + '%' }"
+          :style="{ '--fill': ((radius - 1) / 119) * 100 + '%' }"
           @input="emit('update:radius', Number($event.target.value))"
         />
         <em>{{ radius }}</em>

@@ -366,7 +366,7 @@ function doReset() {
 
 function nudgeRadius(dir, shift) {
   const step = shift ? 8 : 2
-  radius.value = Math.min(64, Math.max(1, radius.value + dir * step))
+  radius.value = Math.min(120, Math.max(1, radius.value + dir * step))
 }
 
 function onKeyTarget(e) {

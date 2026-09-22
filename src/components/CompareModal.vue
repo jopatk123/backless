@@ -1,12 +1,14 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import TouchupCanvas from './TouchupCanvas.vue'
+import ImageParams from './ImageParams.vue'
 
 const props = defineProps({
   image: { type: Object, required: true },
   tolerance: { type: Number, default: 30 },
+  globalSettings: { type: Object, required: true },
 })
-const emit = defineEmits(['close', 'pick', 'reset-color', 'download', 'retouch'])
+const emit = defineEmits(['close', 'pick', 'reset-color', 'download', 'retouch', 'override'])
 
 const mode = ref('compare') // compare | result | original
 const pos = ref(50) // 对比分隔线位置（百分比）
@@ -106,6 +108,8 @@ function onKeydown(e) {
     return
   }
   if (editing.value || !split.value || picking.value) return
+  // 焦点在滑块等控件上时，箭头键留给控件本身
+  if (e.target instanceof HTMLElement && e.target.closest('input, textarea, button, select')) return
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault()
     const step = e.shiftKey ? 10 : 2
@@ -215,6 +219,14 @@ onBeforeUnmount(() => {
       </div>
 
       <p v-if="picking && !editing" class="pick-hint">点击图片中要去除的颜色（基于原图取样）</p>
+
+      <!-- 单图参数：开启后独立于全局设置 -->
+      <ImageParams
+        v-if="!editing"
+        :override="image.override"
+        :global-settings="globalSettings"
+        @override="(v) => emit('override', v)"
+      />
 
       <footer v-if="!editing" class="m-foot">
         <div class="modes" role="tablist">

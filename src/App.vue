@@ -57,6 +57,7 @@ async function addFiles(fileList) {
       originalUrl: URL.createObjectURL(file),
       resultUrl: '',
       resultBlob: null,
+      override: null,
       pickedColor: null,
       autoColor: null,
       touch: null,
@@ -105,8 +106,8 @@ async function runProcess(rec) {
   const stale = () => processGen.get(rec) !== token || !images.includes(rec)
   try {
     const { buffer, w, h } = await service.process(rec.id, {
-      tolerance: settings.tolerance,
-      feather: settings.feather,
+      tolerance: rec.override?.tolerance ?? settings.tolerance,
+      feather: rec.override?.feather ?? settings.feather,
       pickedColor: rec.pickedColor,
     })
     if (stale()) return
@@ -124,7 +125,8 @@ async function runProcess(rec) {
 
 function processAll() {
   images.forEach((rec) => {
-    if (rec.autoColor && rec.status !== 'loading') {
+    // 已单独设置参数的图片不受全局设置影响
+    if (rec.autoColor && rec.status !== 'loading' && !rec.override) {
       rec.status = 'processing'
       runProcess(rec)
     }
@@ -134,6 +136,24 @@ function processAll() {
 function onSettingsChange() {
   clearTimeout(reprocessTimer)
   reprocessTimer = setTimeout(processAll, 260)
+}
+
+/* ---------------- 单图参数覆盖 ---------------- */
+
+let overrideTimer = null
+
+/** 设置或清除单图参数覆盖；与全局设置同样先防抖再重处理该图。 */
+function setOverride(rec, value) {
+  if (!rec) return
+  clearTimeout(overrideTimer)
+  overrideTimer = setTimeout(() => {
+    if (!images.includes(rec)) return
+    rec.override = value ? { tolerance: value.tolerance, feather: value.feather } : null
+    if (rec.autoColor) {
+      rec.status = 'processing'
+      runProcess(rec)
+    }
+  }, 260)
 }
 
 /* ---------------- 吸色 ---------------- */
@@ -455,10 +475,12 @@ onBeforeUnmount(() => {
     <CompareModal
       v-if="modalImage"
       :image="modalImage"
-      :tolerance="settings.tolerance"
+      :tolerance="modalImage.override?.tolerance ?? settings.tolerance"
+      :global-settings="settings"
       @close="modalId = null"
       @pick="(x, y) => pickColor(modalImage, x, y)"
       @reset-color="resetColor(modalImage)"
+      @override="(v) => setOverride(modalImage, v)"
       @download="downloadOne(modalImage)"
       @retouch="onRetouch(modalImage)"
     />
