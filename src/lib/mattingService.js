@@ -86,7 +86,7 @@ export function createMattingService() {
       }).then((msg) => ({ buffer: msg.buffer, w: msg.w, h: msg.h }))
     },
 
-    /** 取原图 (x, y) 处像素颜色（用于吸管） */
+    /** 取原图 (x, y) 周围一小块的平均色（用于吸管） */
     sample(id, x, y) {
       return call({ type: 'sample', id, x, y }).then((msg) => msg.color)
     },

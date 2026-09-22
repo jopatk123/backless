@@ -2,7 +2,7 @@
  * 抠图 Worker：持有每张图的原始像素。主线程另留一份，供修边时把主体涂回。
  * 按请求 id 回传结果，避免并发时串包。
  */
-import { detectEdgeColor, processMatting } from './matting.js'
+import { detectEdgeColor, processMatting, samplePatchColor } from './matting.js'
 
 const store = new Map()
 
@@ -50,10 +50,12 @@ self.onmessage = (e) => {
           reply({ type: 'error', error: '吸色失败' })
           break
         }
-        const x = Math.max(0, Math.min(rec.w - 1, msg.x | 0))
-        const y = Math.max(0, Math.min(rec.h - 1, msg.y | 0))
-        const p = (y * rec.w + x) * 4
-        reply({ type: 'sampled', color: [rec.data[p], rec.data[p + 1], rec.data[p + 2]] })
+        const color = samplePatchColor(rec.data, rec.w, rec.h, msg.x, msg.y)
+        if (!color) {
+          reply({ type: 'error', error: '吸色失败' })
+          break
+        }
+        reply({ type: 'sampled', color })
         break
       }
       case 'unregister': {

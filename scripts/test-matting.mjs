@@ -3,7 +3,7 @@
  * 用法: node scripts/test-matting.mjs
  */
 import assert from 'node:assert/strict'
-import { detectEdgeColor, processMatting } from '../src/lib/matting.js'
+import { detectEdgeColor, processMatting, samplePatchColor } from '../src/lib/matting.js'
 
 const W = 200
 const H = 150
@@ -85,5 +85,42 @@ const t0 = performance.now()
 processMatting(big, Wp, Hp, { tolerance: 20, feather: 2, refColor: [200, 200, 200] })
 const cost = performance.now() - t0
 assert.ok(cost < 1500, `1M 像素应在 1.5s 内完成, 实际 ${cost.toFixed(0)}ms`)
+
+// 8. 吸色：周围平均，单点噪点不能代表整块颜色
+{
+  const pw = 7
+  const ph = 7
+  const patch = new Uint8ClampedArray(pw * ph * 4)
+  for (let i = 0; i < pw * ph; i++) {
+    patch[i * 4] = 200
+    patch[i * 4 + 1] = 200
+    patch[i * 4 + 2] = 200
+    patch[i * 4 + 3] = 255
+  }
+  const center = (3 * pw + 3) * 4
+  patch[center] = 0
+  patch[center + 1] = 0
+  patch[center + 2] = 255
+  const sampled = samplePatchColor(patch, pw, ph, 3, 3)
+  assert.ok(
+    sampled[0] > 180 && sampled[1] > 180 && sampled[2] < 220,
+    `5×5 平均应仍接近灰底, 实际 ${sampled}`
+  )
+  assert.deepEqual(samplePatchColor(patch, pw, ph, 3, 3, 0), [0, 0, 255], '半径 0 应只取中心像素')
+}
+
+// 9. 吸色：跳过透明像素，并钳制越界坐标
+{
+  const pw = 3
+  const ph = 3
+  const patch = new Uint8ClampedArray(pw * ph * 4)
+  patch[0] = 10
+  patch[1] = 20
+  patch[2] = 30
+  patch[3] = 255
+  const sampled = samplePatchColor(patch, pw, ph, -4, 99)
+  assert.deepEqual(sampled, [10, 20, 30], '越界应钳制到角点，并忽略周围透明像素')
+  assert.equal(samplePatchColor(null, 1, 1, 0, 0), null)
+}
 
 console.log(`✔ 全部断言通过（${Wp}x${Hp} 处理耗时 ${cost.toFixed(0)}ms）`)

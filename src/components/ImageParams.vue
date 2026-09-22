@@ -19,7 +19,7 @@ watch(
     if (custom.value) return
     tolVal.value = tolerance
     fthVal.value = feather
-  },
+  }
 )
 
 function onToggleCustom() {

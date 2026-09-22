@@ -5,6 +5,7 @@ import Dropzone from './components/Dropzone.vue'
 import ImageCard from './components/ImageCard.vue'
 import CompareModal from './components/CompareModal.vue'
 import { createMattingService } from './lib/mattingService.js'
+import { samplePatchColor } from './lib/matting.js'
 import { createTouchup, compositeTouchup, hasEdits } from './lib/touchup.js'
 
 const service = createMattingService()
@@ -157,28 +158,25 @@ function setOverride(rec, value) {
       if (!images.includes(rec)) return
       rec.status = 'processing'
       runProcess(rec)
-    }, 260),
+    }, 260)
   )
 }
 
 /* ---------------- 吸色 ---------------- */
 
-async function pickColor(rec, x, y) {
+function pickColor(rec, x, y) {
   if (!rec) return
-  const seen = processGen.get(rec) || 0
-  try {
-    const color = await service.sample(rec.id, x, y)
-    // 取样返回前若已点了「恢复自动」或改了参数，丢弃这次吸色
-    if (!images.includes(rec) || (processGen.get(rec) || 0) !== seen) return
-    if (!color) throw new Error('吸色失败')
-    rec.pickedColor = [color[0], color[1], color[2]]
-    rec.status = 'processing'
-    await runProcess(rec)
-  } catch (e) {
-    if (!images.includes(rec) || (processGen.get(rec) || 0) !== seen) return
+  const src = rec.touch?.original
+  const color = src ? samplePatchColor(src, rec.width, rec.height, x, y) : null
+  if (!color) {
     rec.status = 'error'
-    rec.error = errorText(e)
+    rec.error = '吸色失败'
+    return
   }
+  rec.pickedColor = color
+  rec.status = 'processing'
+  rec.error = ''
+  runProcess(rec)
 }
 
 function compositePixels(rec) {

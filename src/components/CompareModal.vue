@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import TouchupCanvas from './TouchupCanvas.vue'
 import ImageParams from './ImageParams.vue'
+import ColorLoupe from './ColorLoupe.vue'
+import { samplePatchColor } from '../lib/matting.js'
 
 const props = defineProps({
   image: { type: Object, required: true },
@@ -13,6 +15,7 @@ const emit = defineEmits(['close', 'pick', 'reset-color', 'download', 'retouch',
 const mode = ref('compare') // compare | result | original
 const pos = ref(50) // 对比分隔线位置（百分比）
 const picking = ref(false)
+const hover = ref(null)
 const editing = ref(false)
 const viewportEl = ref(null)
 const modeBeforePick = ref('compare')
@@ -63,6 +66,7 @@ function onPointerDown(e) {
 }
 function onPointerMove(e) {
   if (dragging) updatePos(e)
+  if (picking.value) updateHover(e)
 }
 function onPointerUp() {
   dragging = false
@@ -82,22 +86,42 @@ function eventToPixel(e) {
   }
 }
 
+function updateHover(e) {
+  const pt = eventToPixel(e)
+  const src = props.image.touch?.original
+  const color =
+    pt && src ? samplePatchColor(src, props.image.width, props.image.height, pt.x, pt.y) : null
+  if (!color) {
+    hover.value = null
+    return
+  }
+  hover.value = { x: e.clientX, y: e.clientY, hex: toHex(color) }
+}
+
 function doPick(e) {
   const pt = eventToPixel(e)
   picking.value = false
-  mode.value = 'compare'
+  hover.value = null
+  mode.value = modeBeforePick.value
   if (pt) emit('pick', pt.x, pt.y)
 }
 
 function startPick() {
   if (!picking.value) modeBeforePick.value = mode.value
   picking.value = true
+  hover.value = null
   mode.value = 'original'
 }
 
 function cancelPick() {
   picking.value = false
+  hover.value = null
   mode.value = modeBeforePick.value
+}
+
+function setMode(next) {
+  if (picking.value) return
+  mode.value = next
 }
 
 function onKeydown(e) {
@@ -173,6 +197,7 @@ onBeforeUnmount(() => {
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
         @pointercancel="onPointerUp"
+        @pointerleave="hover = null"
       >
         <!-- 原图与结果分开裁切，透明区域露出棋盘格，而不是透出原图 -->
         <img
@@ -218,7 +243,9 @@ onBeforeUnmount(() => {
         <span v-if="image.status === 'error'" class="m-err">{{ image.error || '处理失败' }}</span>
       </div>
 
-      <p v-if="picking && !editing" class="pick-hint">点击图片中要去除的颜色（基于原图取样）</p>
+      <p v-if="picking && !editing" class="pick-hint">
+        在原图上移动可预览取样色，点击确认。取周围一小块的平均色，只去掉连到图片边缘的相近区域。
+      </p>
 
       <!-- 单图参数：开启后独立于全局设置 -->
       <ImageParams
@@ -229,10 +256,24 @@ onBeforeUnmount(() => {
       />
 
       <footer v-if="!editing" class="m-foot">
-        <div class="modes" role="tablist">
-          <button :class="{ on: mode === 'original' }" @click="mode = 'original'">原图</button>
-          <button :class="{ on: mode === 'compare' }" @click="mode = 'compare'">对比</button>
-          <button :class="{ on: mode === 'result' }" @click="mode = 'result'">结果</button>
+        <div class="modes" role="tablist" :title="picking ? '吸色时固定查看原图' : undefined">
+          <button
+            :class="{ on: mode === 'original' }"
+            :disabled="picking"
+            @click="setMode('original')"
+          >
+            原图
+          </button>
+          <button
+            :class="{ on: mode === 'compare' }"
+            :disabled="picking"
+            @click="setMode('compare')"
+          >
+            对比
+          </button>
+          <button :class="{ on: mode === 'result' }" :disabled="picking" @click="setMode('result')">
+            结果
+          </button>
         </div>
 
         <div class="colors">
@@ -307,6 +348,12 @@ onBeforeUnmount(() => {
         </div>
       </footer>
     </div>
+    <ColorLoupe
+      :show="picking && !!hover"
+      :x="hover?.x || 0"
+      :y="hover?.y || 0"
+      :color="hover?.hex || ''"
+    />
   </div>
 </template>
 
@@ -525,6 +572,10 @@ onBeforeUnmount(() => {
   color: var(--text);
   font-weight: 600;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+.modes button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .colors {
   display: flex;

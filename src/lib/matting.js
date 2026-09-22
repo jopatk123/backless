@@ -109,6 +109,52 @@ function featherEdges(px, w, h, radius) {
   }
 }
 
+/** 手动吸色的取样半径（像素）。半径 2 即 5×5，用来压住单点噪点和压缩色块。 */
+export const SAMPLE_RADIUS = 2
+
+/**
+ * 取 (x, y) 周围不透明像素的平均色，坐标会钳制在图内。
+ * 周围全透明时退回中心像素的 RGB。
+ * @returns {[number, number, number] | null}
+ */
+export function samplePatchColor(data, w, h, x, y, radius = SAMPLE_RADIUS) {
+  if (!data || w < 1 || h < 1) return null
+  const cx = clampInt(x, 0, w - 1)
+  const cy = clampInt(y, 0, h - 1)
+  const r = Math.max(0, radius | 0)
+  const x0 = Math.max(0, cx - r)
+  const y0 = Math.max(0, cy - r)
+  const x1 = Math.min(w - 1, cx + r)
+  const y1 = Math.min(h - 1, cy + r)
+  let n = 0
+  let sr = 0
+  let sg = 0
+  let sb = 0
+  for (let yy = y0; yy <= y1; yy++) {
+    const row = yy * w
+    for (let xx = x0; xx <= x1; xx++) {
+      const p = (row + xx) * 4
+      if (data[p + 3] === 0) continue
+      sr += data[p]
+      sg += data[p + 1]
+      sb += data[p + 2]
+      n++
+    }
+  }
+  if (!n) {
+    const p = (cy * w + cx) * 4
+    return [data[p], data[p + 1], data[p + 2]]
+  }
+  return [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)]
+}
+
+function clampInt(value, min, max) {
+  const n = value | 0
+  if (n < min) return min
+  if (n > max) return max
+  return n
+}
+
 /** 容差 0–100 映射为 RGB 欧氏距离平方上限（容差 × 1.4）。修边泛洪与抠图共用。 */
 export function colorMatchLimit(tolerance) {
   const maxD = tolerance * 1.4
